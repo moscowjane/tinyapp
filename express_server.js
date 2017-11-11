@@ -1,18 +1,25 @@
 var express = require("express");
 var app = express();
 var PORT = process.env.PORT || 8080; // default port 8080
-var cookieParser = require("cookie-parser");
+// var cookieParser = require("cookie-parser");
 var session = require("session");
+var bcrypt = require("bcrypt");
+var cookieSession = require("cookie-session");
 
 app.set("view engine", "ejs");
 
 const bodyParser = require("body-parser");
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(cookieParser());
+// app.use(cookieParser());
+app.use(cookieSession){
+  name: "session",
+  keys: [],
+  maxAge: 24 * 60 * 60 *1000
+}
 
 var urlDatabase = {
-  "b2xVn2": "http://www.lighthouselabs.ca",
-  "9sm5xK": "http://www.google.com"
+  "b2xVn2": {longURL: "http://www.lighthouselabs.ca", userID: "userRandomID"},
+  "9sm5xK": {longURL: "http://www.google.com", userID: "user2RandomID"}
 };
 
 const users = {
@@ -70,22 +77,36 @@ function findUser(email){
   return user;
 }
 
-app.get("/u/:shortURL", (req, res) => {
-  let longURL = urlDatabase[req.params.shortURL];
-  res.redirect(longURL);
-});
+function getUrlsforUser(user_id){
+  var urls = {};
+  for (var url in urlDatabase) {
+    //if current url belongs to user
+    if(urlDatabase[url].userID === user_id) {
+    //copy to urls from database
+      urls[url] = urlDatabase[url];
+    }
+  }
+  return urls;
+}
+
+function hashSync() {}
 
 app.use((req, res, next) =>{
   res.locals.user = users[req.cookies.user_id];
   next();
 });
 
+app.get("/urls.json", (req, res) => {
+  res.json(urlDatabase);
+});
+
 app.get("/", (req, res) => {
   res.end("Hello!");
 });
 
-app.get("/urls.json", (req, res) => {
-  res.json(urlDatabase);
+app.get("/u/:shortURL", (req, res) => {
+  let longURL = urlDatabase[req.params.shortURL].longURL;
+  res.redirect(longURL);
 });
 
 app.get("/hello", (req, res) => {
@@ -94,29 +115,45 @@ app.get("/hello", (req, res) => {
 
 app.get("/urls", (req, res) => {
   const user_id = req.cookies.user_id;
-  let templateVars = { urls: urlDatabase,
+  let templateVars = { urls: getUrlsforUser(user_id),
     user: users[user_id]};
   res.render("urls_index", templateVars);
 });
 
-app.get("/urls/new", (req, res) => {
+app.get("/urls/new", (req, res ) => {
+  //guard statement preventing execution of function if error found
+  if (!req.cookies.user_id) {
+    //deal with error
+    res.redirect("/login");
+    return
+  }
+  //return html with new url format
   res.render("urls_new");
 });
 
 app.get("/urls/:id", (req, res) => {
+   if (urlDatabase[req.params.id].userID != req.cookies.user_id) {
+    //deal with error
+    res.send(403);
+    return
+  }
   var display = {
     shortURL: req.params.id,
-    longURL: urlDatabase[req.params.id]
+    longURL: urlDatabase[req.params.id].longURL
   };
   let templateVars = display;
   res.render("urls_show", templateVars);
 });
 
 app.post("/urls", (req, res) => {
+    if (!req.cookies.user_id) {
+    //deal with error
+    res.redirect("/login");
+    return
+  }
   let shortURL = generateRandomString();
   let longURL = req.body["longURL"];
-  urlDatabase[shortURL] = longURL;
-  console.log(req.body);  // debug statement to see POST parameters
+  urlDatabase[shortURL] = {longURL: longURL, userID: req.cookies.user_id};
   res.redirect("/urls/"+ shortURL);
 });
 
@@ -131,16 +168,19 @@ app.post("/urls/:id/delete", (req, res) => {
 // });
 
 app.post("/urls/:id", (req, res) => {
-  urlDatabase[req.params.id] = req.body.longURL;
+  urlDatabase[req.params.id].longURL = req.body.longURL;
   res.redirect("/urls");
 });
-
 
 app.get("/login", (req, res) => {
   res.render("login");
 });
 
 app.post("/login", (req, res) => {
+
+   bcrypt.compareSync("purple-monkey-dinosaur", hashedPassword); // returns true
+   bcrypt.compareSync("pink-donkey-minotaur", hashedPassword); // returns false
+
   const { email, password } = req.body;
   const user = findUser(email);
 
@@ -157,9 +197,27 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-
-
 app.post("/register", (req,res) => {
+
+  const bcrypt = require('bcrypt');
+  let password = "purple-monkey-dinosaur"; // you will probably this from req.params
+  let saltRounds = 10;
+
+  var salt = bcrypt.genSaltSync(saltRounds);
+
+  var hash = bcrypt.hashSync(password, salt);
+
+  console.log(hash);
+
+  // if (bcrypt.compareSync(password, hash) {
+  //   console.log("The password is a match!");
+  // } else {
+  //   console.log("The password is not a match.");
+  // }
+
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  console.log("hashedPassword")
+
   //add new user object in users, to keep track of email, password and user ID
   if (req.body.email === "" || req.body.password === "") {
    res.status(400).send("400! Email or password empty");
