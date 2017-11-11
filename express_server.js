@@ -10,12 +10,13 @@ app.set("view engine", "ejs");
 
 const bodyParser = require("body-parser");
 app.use(bodyParser.urlencoded({extended: true}));
-// app.use(cookieParser());
-app.use(cookieSession){
+
+app.use(cookieSession({
+
   name: "session",
-  keys: [],
-  maxAge: 24 * 60 * 60 *1000
-}
+  keys: ["Hello"],
+  maxAge: 24 * 60 * 60 *1000,
+}));
 
 var urlDatabase = {
   "b2xVn2": {longURL: "http://www.lighthouselabs.ca", userID: "userRandomID"},
@@ -92,7 +93,7 @@ function getUrlsforUser(user_id){
 function hashSync() {}
 
 app.use((req, res, next) =>{
-  res.locals.user = users[req.cookies.user_id];
+  res.locals.user = users[req.session.user_id];
   next();
 });
 
@@ -114,7 +115,7 @@ app.get("/hello", (req, res) => {
 });
 
 app.get("/urls", (req, res) => {
-  const user_id = req.cookies.user_id;
+  const user_id = req.session.user_id;
   let templateVars = { urls: getUrlsforUser(user_id),
     user: users[user_id]};
   res.render("urls_index", templateVars);
@@ -122,7 +123,7 @@ app.get("/urls", (req, res) => {
 
 app.get("/urls/new", (req, res ) => {
   //guard statement preventing execution of function if error found
-  if (!req.cookies.user_id) {
+  if (!req.session.user_id) {
     //deal with error
     res.redirect("/login");
     return
@@ -132,7 +133,7 @@ app.get("/urls/new", (req, res ) => {
 });
 
 app.get("/urls/:id", (req, res) => {
-   if (urlDatabase[req.params.id].userID != req.cookies.user_id) {
+   if (urlDatabase[req.params.id].userID != req.session.user_id) {
     //deal with error
     res.send(403);
     return
@@ -146,14 +147,14 @@ app.get("/urls/:id", (req, res) => {
 });
 
 app.post("/urls", (req, res) => {
-    if (!req.cookies.user_id) {
+    if (!req.session.user_id) {
     //deal with error
     res.redirect("/login");
     return
   }
   let shortURL = generateRandomString();
   let longURL = req.body["longURL"];
-  urlDatabase[shortURL] = {longURL: longURL, userID: req.cookies.user_id};
+  urlDatabase[shortURL] = {longURL: longURL, userID: req.session.user_id};
   res.redirect("/urls/"+ shortURL);
 });
 
@@ -185,7 +186,7 @@ app.post("/login", (req, res) => {
   const user = findUser(email);
 
   if (user && password === user.password) {
-    res.cookie("user_id", user.id)
+    res.session("user_id", user.id)
     res.redirect("/urls");
   } else {
     res.status(403);
@@ -208,13 +209,6 @@ app.post("/register", (req,res) => {
   var hash = bcrypt.hashSync(password, salt);
 
   console.log(hash);
-
-  // if (bcrypt.compareSync(password, hash) {
-  //   console.log("The password is a match!");
-  // } else {
-  //   console.log("The password is not a match.");
-  // }
-
   const hashedPassword = bcrypt.hashSync(password, 10);
   console.log("hashedPassword")
 
@@ -234,12 +228,15 @@ app.post("/register", (req,res) => {
     id: user_id
   }
   console.log(users);
-  res.cookie("user_id", user_id)
+  //was res.cookies - then req.session
+  req.session.user_id = user_id;
   res.redirect("/urls");
 });
 
 app.post("/logout", (req,res) => {
- res.clearCookie("user_id");
+  //clearcookies
+  //res.ClearCookies
+ req.session = null;
  res.redirect("/urls");
 });
 
